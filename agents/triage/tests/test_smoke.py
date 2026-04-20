@@ -11,7 +11,9 @@ import pytest
 
 
 def test_import() -> None:
-    import namiview_triage  
+    import namiview_triage
+
+    assert namiview_triage.__name__ == "namiview_triage"
 
 
 def test_cli_exits_with_2_when_env_missing(monkeypatch: pytest.MonkeyPatch) -> None:

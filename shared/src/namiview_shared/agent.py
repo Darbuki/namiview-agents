@@ -168,7 +168,7 @@ class Agent:
                 "content": f"Invalid tool input: {e}",
                 "is_error": True,
             }
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.exception("agent.tool.error", tool=tool_name)
             return {
                 "type": "tool_result",

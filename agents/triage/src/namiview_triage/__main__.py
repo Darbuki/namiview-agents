@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         core = load_k8s_client()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.error("k8s.load.failed", error=str(e))
         print(f"error: could not load Kubernetes config: {e}", file=sys.stderr)
         return 1
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     log.info("triage.start", description=args.description, repo=args.repo)
     try:
         run = agent.run(args.description)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.exception("triage.failed")
         print(f"error: agent run failed: {e}", file=sys.stderr)
         return 1
