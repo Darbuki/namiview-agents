@@ -32,6 +32,12 @@ select = [
     "RUF",  # ruff-specific rules
 ]
 
+# Tell isort which packages are ours so it groups them separately from
+# third-party. Without this, `namiview_triage` under agents/triage/src/
+# gets misclassified on non-editable installs (e.g. CI, Docker).
+[tool.ruff.lint.isort]
+known-first-party = ["namiview_shared", "namiview_triage"]
+
 [tool.pytest.ini_options]
 testpaths = ["shared/tests", "agents/triage/tests"]
 # `importlib` mode lets us have identically-named test modules
