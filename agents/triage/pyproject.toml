@@ -7,10 +7,13 @@ dependencies = [
     "namiview-shared",
     "kubernetes>=30.0",
     "httpx>=0.27",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.scripts]
 namiview-triage = "namiview_triage.__main__:main"
+namiview-triage-server = "namiview_triage.server:main"
 
 [build-system]
 requires = ["hatchling"]

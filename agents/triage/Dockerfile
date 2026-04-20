@@ -63,6 +63,11 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 USER agent
 
-# Default entrypoint is the CLI itself — so `docker run <image> "describe the problem"`
-# behaves the same as `uv run namiview-triage "describe the problem"` locally.
-ENTRYPOINT ["namiview-triage"]
+# Default entrypoint is the HTTP server — this is how the agent runs in-cluster
+# (fronted by a k8s Service, triggered by Alertmanager webhooks).
+#
+# The one-shot CLI is still shipped in the image as `namiview-triage`; override
+# the entrypoint to use it, e.g. for manual Job-style investigations:
+#   docker run --entrypoint namiview-triage <image> "describe the problem"
+EXPOSE 8080
+ENTRYPOINT ["namiview-triage-server"]
