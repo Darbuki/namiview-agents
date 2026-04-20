@@ -1,0 +1,121 @@
+name: triage image
+
+# Build + push `namiview-triage` container image to Docker Hub.
+#
+# - Every push to any branch triggers a build (sanity check + cache warmup).
+# - Pushes to `main` additionally push tags `latest` and `<git-sha>`.
+# - Pushes to feature branches push a `branch-<name>` tag so you can pull
+#   a dev image without merging.
+# - PRs build but DO NOT push (no creds exposed to forks).
+#
+# Credentials live in the `namiview` GitHub Environment:
+#   DOCKERHUB_USERNAME       (secret)
+#   DOCKERHUB_TOKEN          (secret)  — Docker Hub access token, Read & Write
+#   DOCKERHUB_TRIAGE_IMAGE   (variable) — image name without registry host or
+#                                         tag, e.g. "namiview-triage". The
+#                                         username is prefixed automatically.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'shared/**'
+      - 'agents/triage/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/triage-image.yml'
+  pull_request:
+    paths:
+      - 'shared/**'
+      - 'agents/triage/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/triage-image.yml'
+  # Manual trigger from the Actions tab. The branch/ref selector in the GitHub
+  # UI controls which commit gets built — no inputs needed here. Runs against
+  # the default branch by default, which is usually what you want for a
+  # "rebuild and push latest" button.
+  workflow_dispatch:
+
+# Never run two builds of the same ref concurrently — cancel the older one.
+concurrency:
+  group: triage-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: lint + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync workspace
+        run: uv sync --frozen
+
+      - name: Ruff
+        run: uv run ruff check
+
+      - name: Pytest
+        run: uv run pytest
+
+  build-and-push:
+    name: build + push
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    # Secrets + variables (DOCKERHUB_*) live in this environment, so every job
+    # that needs them must declare it here. Also gates pushes through whatever
+    # protection rules are set on the environment in GitHub Settings.
+    environment: namiview
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Only log in when we intend to push. That means: push events and
+      # manual (workflow_dispatch) runs — but NOT PRs, since PRs from forks
+      # don't have access to secrets anyway.
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Compute tags:
+      #   - main:          latest, <sha>
+      #   - feature branch: branch-<slug>, <sha>
+      #   - PR:             pr-<num> (build-only, never pushed)
+      - name: Compute image tags
+        id: tags
+        uses: docker/metadata-action@v5
+        with:
+          # The env variable stores just the image name (e.g. "namiview-triage");
+          # prefix the Docker Hub username to get "<user>/namiview-triage".
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_TRIAGE_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=branch,prefix=branch-
+            type=ref,event=pr,prefix=pr-
+
+      - name: Build (and push on non-PR events)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: agents/triage/Dockerfile
+          # Push on pushes and on manual workflow_dispatch runs. Don't push
+          # on PRs (no secrets available, and we don't want fork contributors
+          # publishing to our registry).
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: ${{ steps.tags.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

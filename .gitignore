@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# uv
+# (uv.lock should be committed; don't ignore it)
+
+# Testing / type-checking caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local env files — secrets never belong in git
+.env
+.env.*
+!.env.example

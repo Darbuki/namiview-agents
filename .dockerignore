@@ -1,0 +1,36 @@
+# Keep the Docker build context small and deterministic.
+# Applies to ALL `docker build` invocations from the repo root.
+
+# Version control + CI
+.git
+.github
+.gitignore
+
+# Virtual environments — we rebuild inside the image
+.venv
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Test + lint caches
+.pytest_cache
+.ruff_cache
+.mypy_cache
+htmlcov
+.coverage*
+
+# IDE / OS noise
+.idea
+.vscode
+.DS_Store
+*.swp
+
+# Local-only env files (secrets!)
+.env
+.env.*
+!.env.example
+
+# Docs we don't need at runtime
+README.md
+**/README.md
