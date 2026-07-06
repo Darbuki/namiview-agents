@@ -20,13 +20,17 @@ Concurrency:
     runs; they queue.
 
 Auth:
-    None. The Service is ClusterIP-only and intended to be reached from
-    inside the cluster (Alertmanager). Network-layer auth lives in the
-    NetworkPolicy, not here.
+    Application-layer bearer token. When TRIAGE_WEBHOOK_TOKEN is set, /triage
+    requires `Authorization: Bearer <token>` (constant-time compare) — so a
+    foothold pod can't POST fabricated alerts to burn Anthropic tokens / spam
+    GitHub issues. When it's unset, the check warns and allows (safe rollout:
+    deploying this code before the secret is wired won't break Alertmanager).
+    This does not depend on CNI NetworkPolicy enforcement.
 """
 
 from __future__ import annotations
 
+import hmac
 import os
 import threading
 import uuid
@@ -49,6 +53,27 @@ if TYPE_CHECKING:
 # Max concurrent investigations. Low on purpose — each run burns Anthropic
 # tokens and makes real API calls; an alert storm shouldn't fan out freely.
 MAX_CONCURRENT_RUNS = int(os.environ.get("TRIAGE_MAX_CONCURRENT", "3"))
+
+# Shared secret guarding /triage. Set → enforced; unset → warn-and-allow.
+WEBHOOK_TOKEN = os.environ.get("TRIAGE_WEBHOOK_TOKEN", "").strip()
+
+
+def _verify_webhook_auth(request: Request, log: Any) -> None:
+    """Enforce the bearer token on /triage when one is configured.
+
+    Constant-time compare to avoid timing oracles. Raises 401 on a
+    missing/wrong token; no-ops (with a one-time warning) when unconfigured
+    so the endpoint keeps working before the secret is wired in.
+    """
+    if not WEBHOOK_TOKEN:
+        if not getattr(request.app.state, "warned_no_webhook_token", False):
+            log.warning("triage.auth_disabled", reason="TRIAGE_WEBHOOK_TOKEN unset")
+            request.app.state.warned_no_webhook_token = True
+        return
+    header = request.headers.get("authorization", "")
+    scheme, _, presented = header.partition(" ")
+    if scheme.lower() != "bearer" or not hmac.compare_digest(presented, WEBHOOK_TOKEN):
+        raise HTTPException(status_code=401, detail="Invalid or missing bearer token")
 
 
 class TriageRequest(BaseModel):
@@ -149,9 +174,10 @@ async def triage(request: Request, background: BackgroundTasks) -> dict[str, Any
 
     Response body lists the run_ids spawned so callers can correlate.
     """
+    log = request.app.state.log
+    _verify_webhook_auth(request, log)
     body = await request.json()
     agent: Agent = request.app.state.agent
-    log = request.app.state.log
     sem: threading.Semaphore = request.app.state.sem
 
     descriptions: list[str] = []

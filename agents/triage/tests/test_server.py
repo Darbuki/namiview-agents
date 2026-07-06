@@ -40,6 +40,7 @@ def client(monkeypatch: pytest.MonkeyPatch):
         app.state.agent = fake
         app.state.log = SimpleNamespace(
             info=lambda *a, **k: None,
+            warning=lambda *a, **k: None,
             exception=lambda *a, **k: None,
         )
         app.state.sem = threading.Semaphore(3)
@@ -78,6 +79,51 @@ def test_triage_manual_shape(client: TestClient) -> None:
 def test_triage_rejects_empty_description(client: TestClient) -> None:
     r = client.post("/triage", json={"description": ""})
     assert r.status_code == 422
+
+
+def test_triage_allows_when_token_unset(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Default fixture has WEBHOOK_TOKEN unset → warn-and-allow (safe rollout).
+    monkeypatch.setattr(server_mod, "WEBHOOK_TOKEN", "")
+    r = client.post("/triage", json={"description": "no token configured"})
+    assert r.status_code == 202
+
+
+def test_triage_requires_bearer_when_token_set(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server_mod, "WEBHOOK_TOKEN", "s3cr3t-token")
+
+    # Missing header → 401, and the agent must not run.
+    r = client.post("/triage", json={"description": "unauthorized"})
+    assert r.status_code == 401
+    assert client.fake_agent.calls == []  # type: ignore[attr-defined]
+
+    # Wrong token → 401.
+    r = client.post(
+        "/triage",
+        json={"description": "wrong token"},
+        headers={"Authorization": "Bearer nope"},
+    )
+    assert r.status_code == 401
+
+    # Correct bearer token → 202 and the agent runs.
+    r = client.post(
+        "/triage",
+        json={"description": "authorized"},
+        headers={"Authorization": "Bearer s3cr3t-token"},
+    )
+    assert r.status_code == 202
+    assert client.fake_agent.calls == ["authorized"]  # type: ignore[attr-defined]
+
+
+def test_healthz_never_requires_auth(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server_mod, "WEBHOOK_TOKEN", "s3cr3t-token")
+    r = client.get("/healthz")
+    assert r.status_code == 200  # liveness must stay unauthenticated for kubelet
 
 
 def test_triage_alertmanager_shape(client: TestClient) -> None:
