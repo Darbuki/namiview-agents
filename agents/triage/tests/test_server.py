@@ -81,14 +81,18 @@ def test_triage_rejects_empty_description(client: TestClient) -> None:
     assert r.status_code == 422
 
 
-def test_triage_allows_when_token_unset(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_triage_allows_when_token_unset(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Default fixture has WEBHOOK_TOKEN unset → warn-and-allow (safe rollout).
     monkeypatch.setattr(server_mod, "WEBHOOK_TOKEN", "")
     r = client.post("/triage", json={"description": "no token configured"})
     assert r.status_code == 202
 
 
-def test_triage_requires_bearer_when_token_set(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_triage_requires_bearer_when_token_set(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(server_mod, "WEBHOOK_TOKEN", "s3cr3t-token")
 
     # Missing header → 401, and the agent must not run.
@@ -114,7 +118,9 @@ def test_triage_requires_bearer_when_token_set(client: TestClient, monkeypatch: 
     assert client.fake_agent.calls == ["authorized"]  # type: ignore[attr-defined]
 
 
-def test_healthz_never_requires_auth(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_healthz_never_requires_auth(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(server_mod, "WEBHOOK_TOKEN", "s3cr3t-token")
     r = client.get("/healthz")
     assert r.status_code == 200  # liveness must stay unauthenticated for kubelet
